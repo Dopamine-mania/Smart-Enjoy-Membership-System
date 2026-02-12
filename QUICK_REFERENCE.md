@@ -180,6 +180,6 @@ docker compose restart redis
 
 ---
 
-**项目位置**: `/home/jovyan/teaching_material/Work/MindFlow/Entry_level/main`
+**项目位置**: `./` (项目根目录)
 
 **技术栈**: FastAPI + PostgreSQL + Redis + Docker
