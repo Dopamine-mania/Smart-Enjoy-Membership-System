@@ -5,6 +5,10 @@ import enum
 from app.db.session import Base
 
 
+def _enum_values(enum_cls):
+    return [e.value for e in enum_cls]
+
+
 class PointTransactionType(str, enum.Enum):
     """Point transaction type enum."""
     EARN = "earn"
@@ -27,8 +31,8 @@ class PointTransaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    transaction_type = Column(Enum(PointTransactionType), nullable=False)
-    reason = Column(Enum(PointTransactionReason), nullable=False)
+    transaction_type = Column(Enum(PointTransactionType, native_enum=False, values_callable=_enum_values), nullable=False)
+    reason = Column(Enum(PointTransactionReason, native_enum=False, values_callable=_enum_values), nullable=False)
     points = Column(Integer, nullable=False)
     balance_after = Column(Integer, nullable=False)
 

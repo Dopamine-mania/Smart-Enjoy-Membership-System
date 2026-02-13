@@ -1,5 +1,5 @@
 """Authentication middleware."""
-from fastapi import Request, HTTPException, status
+from fastapi import Request, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.core.security import decode_access_token
 from app.core.error_codes import ErrorCode, BusinessException
@@ -7,12 +7,17 @@ from app.services.auth_service import AuthService
 from app.db.session import get_db
 from app.repositories.user_repository import UserRepository
 from app.repositories.admin_repository import AdminRepository
+from sqlalchemy.orm import Session
 
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
-async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = None):
+async def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
     """
     Get current authenticated user from JWT token.
 
@@ -22,7 +27,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": ErrorCode.UNAUTHORIZED[0], "message": ErrorCode.UNAUTHORIZED[1]}
+            detail={"code": ErrorCode.UNAUTHORIZED[0], "message": ErrorCode.UNAUTHORIZED[1]},
         )
 
     token = credentials.credentials
@@ -34,7 +39,6 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         jti = payload.get("jti")
 
         # Check if token is blacklisted
-        db = next(get_db())
         auth_service = AuthService(db)
 
         if auth_service.is_token_blacklisted(jti):
@@ -61,16 +65,20 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     except BusinessException as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": e.code, "message": e.message}
+            detail={"code": e.code, "message": e.message},
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": ErrorCode.INVALID_TOKEN[0], "message": ErrorCode.INVALID_TOKEN[1]}
+            detail={"code": ErrorCode.INVALID_TOKEN[0], "message": ErrorCode.INVALID_TOKEN[1]},
         )
 
 
-async def get_current_admin(request: Request, credentials: HTTPAuthorizationCredentials = None):
+async def get_current_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
     """
     Get current authenticated admin from JWT token.
 
@@ -80,7 +88,7 @@ async def get_current_admin(request: Request, credentials: HTTPAuthorizationCred
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": ErrorCode.UNAUTHORIZED[0], "message": ErrorCode.UNAUTHORIZED[1]}
+            detail={"code": ErrorCode.UNAUTHORIZED[0], "message": ErrorCode.UNAUTHORIZED[1]},
         )
 
     token = credentials.credentials
@@ -97,7 +105,6 @@ async def get_current_admin(request: Request, credentials: HTTPAuthorizationCred
         admin_id = abs(user_id)
 
         # Get admin
-        db = next(get_db())
         admin_repo = AdminRepository(db)
         admin = admin_repo.get_admin_by_id(admin_id)
 
@@ -116,10 +123,10 @@ async def get_current_admin(request: Request, credentials: HTTPAuthorizationCred
     except BusinessException as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": e.code, "message": e.message}
+            detail={"code": e.code, "message": e.message},
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": ErrorCode.INVALID_TOKEN[0], "message": ErrorCode.INVALID_TOKEN[1]}
+            detail={"code": ErrorCode.INVALID_TOKEN[0], "message": ErrorCode.INVALID_TOKEN[1]},
         )

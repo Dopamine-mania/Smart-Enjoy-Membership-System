@@ -179,4 +179,15 @@ class PointService:
 
     def get_transactions(self, user_id: int, skip: int = 0, limit: int = 20) -> tuple[list, int]:
         """Get user point transactions."""
-        return self.point_repo.list_by_user(user_id, skip, limit)
+        return self.point_repo.list_by_user(user_id, None, None, skip, limit)
+
+    def get_transactions_by_time(
+        self,
+        user_id: int,
+        start_date=None,
+        end_date=None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[list, int]:
+        """Get user point transactions with optional time filters."""
+        return self.point_repo.list_by_user(user_id, start_date, end_date, skip, limit)

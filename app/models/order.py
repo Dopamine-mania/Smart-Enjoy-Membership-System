@@ -5,6 +5,10 @@ import enum
 from app.db.session import Base
 
 
+def _enum_values(enum_cls):
+    return [e.value for e in enum_cls]
+
+
 class OrderStatus(str, enum.Enum):
     """Order status enum."""
     PENDING = "pending"
@@ -23,7 +27,12 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     amount = Column(Numeric(10, 2), nullable=False)
-    status = Column(Enum(OrderStatus), default=OrderStatus.PENDING, nullable=False, index=True)
+    status = Column(
+        Enum(OrderStatus, native_enum=False, values_callable=_enum_values),
+        default=OrderStatus.PENDING,
+        nullable=False,
+        index=True,
+    )
 
     product_name = Column(String(200))
     product_description = Column(String(1000))

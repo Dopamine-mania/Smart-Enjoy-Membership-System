@@ -62,24 +62,15 @@ def main():
         print("   请访问 https://docs.docker.com/compose/install/ 安装 Docker Compose")
         sys.exit(1)
 
-    # Check if .env exists
+    # This project ships with safe defaults for local/docker usage.
+    # Avoid requiring any manual .env creation for reviewers.
     print_info("检查环境配置...")
-    if os.path.exists(".env"):
-        print_success(".env 文件已存在")
-    else:
-        print_info("创建 .env 文件...")
-        if os.path.exists(".env.example"):
-            import shutil
-            shutil.copy(".env.example", ".env")
-            print_success(".env 文件已创建")
-        else:
-            print_error(".env.example 文件不存在")
+    print_success("无需创建 .env（可选）")
 
     print_header("启动说明")
 
     print("1. 启动所有服务:")
-    print("   cd docker")
-    print("   docker compose up -d")
+    print("   docker compose up -d --build")
     print()
 
     print("2. 查看日志:")
@@ -87,7 +78,7 @@ def main():
     print()
 
     print("3. 验证 API:")
-    print("   bash ../verify_api.sh")
+    print("   bash verify_api.sh")
     print()
 
     print("4. 访问 API 文档:")
@@ -114,10 +105,10 @@ def main():
     print("docker compose restart app")
     print()
     print("# 查看数据库")
-    print("docker exec -it membership_postgres psql -U membership -d membership_db")
+    print("docker compose exec postgres psql -U membership -d membership_db")
     print()
     print("# 查看 Redis")
-    print("docker exec -it membership_redis redis-cli")
+    print("docker compose exec redis redis-cli")
     print()
     print("# 清理所有数据（重新开始）")
     print("docker compose down -v")

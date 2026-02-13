@@ -39,3 +39,9 @@ def get_current_beijing_time() -> datetime:
 def utc_now() -> datetime:
     """Get current UTC time (timezone-aware)."""
     return datetime.now(timezone.utc)
+
+
+def current_beijing_period() -> str:
+    """Get current period string (YYYY-MM) in Beijing timezone."""
+    now = get_current_beijing_time()
+    return now.strftime("%Y-%m")

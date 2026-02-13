@@ -6,7 +6,7 @@
 set -e
 
 BASE_URL="http://localhost:8000"
-EMAIL="test@example.com"
+EMAIL="test_$(date +%s)@example.com"
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="admin123"
 
@@ -101,8 +101,16 @@ PROFILE_RESPONSE=$(curl -s "$BASE_URL/api/v1/members/me" \
     -H "Authorization: Bearer $USER_TOKEN")
 
 if echo "$PROFILE_RESPONSE" | grep -q "email"; then
+    USER_ID=$(echo "$PROFILE_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
     success "获取用户资料成功"
-    echo "   用户信息: $(echo $PROFILE_RESPONSE | grep -o '"nickname":"[^"]*"' | cut -d'"' -f4)"
+    echo "   用户信息: $(echo "$PROFILE_RESPONSE" | grep -o '"nickname":"[^"]*"' | cut -d'"' -f4)"
+
+    MASKED_EMAIL=$(echo "$PROFILE_RESPONSE" | grep -o '"email":"[^"]*"' | cut -d'"' -f4)
+    if echo "$MASKED_EMAIL" | grep -q "\\*\\*\\*"; then
+        success "敏感字段脱敏正常（邮箱）"
+    else
+        error "敏感字段脱敏异常（邮箱未脱敏）"
+    fi
 else
     error "获取用户资料失败"
 fi
@@ -135,6 +143,74 @@ else
 fi
 echo ""
 
+# Test 6.1: Refresh Token
+info "测试 6.1: 刷新令牌"
+REFRESH_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/refresh" \
+    -H "Authorization: Bearer $USER_TOKEN")
+
+if echo "$REFRESH_RESPONSE" | grep -q "access_token"; then
+    USER_TOKEN=$(echo "$REFRESH_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+    success "刷新令牌成功"
+else
+    error "刷新令牌失败"
+fi
+echo ""
+
+# Test 6.2: Order lifecycle + points (complete/refund)
+info "测试 6.2: 订单完成赚取积分 + 退款扣回"
+CREATE_ORDER_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/orders" \
+    -H "Authorization: Bearer $USER_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"amount": 12, "product_name": "Test Product", "product_description": "Test Desc"}')
+
+ORDER_ID=$(echo "$CREATE_ORDER_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+if [ -n "$ORDER_ID" ]; then
+    success "创建订单成功: id=$ORDER_ID"
+    if echo "$CREATE_ORDER_RESPONSE" | grep -qE '"created_at":"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"'; then
+        success "北京时间时间字段格式正常（订单 created_at）"
+    else
+        error "北京时间时间字段格式异常（订单 created_at）"
+    fi
+else
+    error "创建订单失败"
+fi
+
+COMPLETE_ORDER_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/orders/$ORDER_ID/complete" \
+    -H "Authorization: Bearer $USER_TOKEN")
+if echo "$COMPLETE_ORDER_RESPONSE" | grep -q '"status":"completed"'; then
+    success "订单完成成功"
+else
+    error "订单完成失败"
+fi
+
+AFTER_COMPLETE_POINTS_RESPONSE=$(curl -s "$BASE_URL/api/v1/points/balance" \
+    -H "Authorization: Bearer $USER_TOKEN")
+AFTER_COMPLETE_POINTS=$(echo "$AFTER_COMPLETE_POINTS_RESPONSE" | grep -o '"available_points":[0-9]*' | cut -d':' -f2)
+EXPECTED_AFTER_COMPLETE=$((POINTS + 12))
+if [ "$AFTER_COMPLETE_POINTS" -eq "$EXPECTED_AFTER_COMPLETE" ]; then
+    success "完成订单积分发放正确: $AFTER_COMPLETE_POINTS"
+else
+    error "完成订单积分发放异常（期望 $EXPECTED_AFTER_COMPLETE，实际 $AFTER_COMPLETE_POINTS）"
+fi
+
+REFUND_ORDER_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/orders/$ORDER_ID/refund" \
+    -H "Authorization: Bearer $USER_TOKEN")
+if echo "$REFUND_ORDER_RESPONSE" | grep -q '"status":"refunded"'; then
+    success "订单退款成功"
+else
+    error "订单退款失败"
+fi
+
+AFTER_REFUND_POINTS_RESPONSE=$(curl -s "$BASE_URL/api/v1/points/balance" \
+    -H "Authorization: Bearer $USER_TOKEN")
+AFTER_REFUND_POINTS=$(echo "$AFTER_REFUND_POINTS_RESPONSE" | grep -o '"available_points":[0-9]*' | cut -d':' -f2)
+if [ "$AFTER_REFUND_POINTS" -eq "$POINTS" ]; then
+    success "退款积分扣回正确: $AFTER_REFUND_POINTS"
+else
+    error "退款积分扣回异常（期望 $POINTS，实际 $AFTER_REFUND_POINTS）"
+fi
+echo ""
+
 # Test 7: Get Point Transactions
 info "测试 7: 查询积分交易历史"
 TRANSACTIONS_RESPONSE=$(curl -s "$BASE_URL/api/v1/points/transactions?page=1&page_size=10" \
@@ -142,6 +218,9 @@ TRANSACTIONS_RESPONSE=$(curl -s "$BASE_URL/api/v1/points/transactions?page=1&pag
 
 if echo "$TRANSACTIONS_RESPONSE" | grep -q "items"; then
     success "查询积分交易历史成功"
+    if echo "$TRANSACTIONS_RESPONSE" | grep -qE '"created_at":"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"'; then
+        success "北京时间时间字段格式正常（积分交易 created_at）"
+    fi
 else
     error "查询积分交易历史失败"
 fi
@@ -168,6 +247,21 @@ if echo "$MY_BENEFITS_RESPONSE" | grep -q "items"; then
     success "查询我的权益成功"
 else
     error "查询我的权益失败"
+fi
+echo ""
+
+# Test 9.1: Benefit distribution idempotency (same period should not duplicate)
+info "测试 9.1: 月度权益发放幂等性（重复访问不重复发放）"
+TOTAL1=$(echo "$MY_BENEFITS_RESPONSE" | grep -o '"total":[0-9]*' | head -1 | cut -d':' -f2)
+
+MY_BENEFITS_RESPONSE2=$(curl -s "$BASE_URL/api/v1/benefits/my-benefits?page=1&page_size=10" \
+    -H "Authorization: Bearer $USER_TOKEN")
+TOTAL2=$(echo "$MY_BENEFITS_RESPONSE2" | grep -o '"total":[0-9]*' | head -1 | cut -d':' -f2)
+
+if [ -n "$TOTAL1" ] && [ "$TOTAL1" -eq "$TOTAL2" ]; then
+    success "权益发放幂等性正常（total=$TOTAL2）"
+else
+    error "权益发放幂等性异常（total1=$TOTAL1, total2=$TOTAL2）"
 fi
 echo ""
 
@@ -214,7 +308,7 @@ info "测试 13: 管理员调整积分"
 ADJUST_POINTS_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/admin/points/adjust" \
     -H "Authorization: Bearer $ADMIN_TOKEN" \
     -H "Content-Type: application/json" \
-    -d '{"user_id": 1, "points": 100, "reason": "测试奖励"}')
+    -d "{\"user_id\": ${USER_ID:-1}, \"points\": 100, \"reason\": \"测试奖励\"}")
 
 if echo "$ADJUST_POINTS_RESPONSE" | grep -q "积分调整成功"; then
     success "管理员调整积分成功"
@@ -238,18 +332,39 @@ echo ""
 
 # Test 15: Rate Limiting Test
 info "测试 15: 验证码限流测试"
+RATE_LIMIT_EMAIL="ratelimit_$(date +%s)@test.com"
 FIRST_CODE=$(curl -s -X POST "$BASE_URL/api/v1/auth/send-code" \
     -H "Content-Type: application/json" \
-    -d '{"email": "ratelimit@test.com", "purpose": "register"}')
+    -d "{\"email\": \"$RATE_LIMIT_EMAIL\", \"purpose\": \"register\"}")
 
 SECOND_CODE=$(curl -s -X POST "$BASE_URL/api/v1/auth/send-code" \
     -H "Content-Type: application/json" \
-    -d '{"email": "ratelimit@test.com", "purpose": "register"}')
+    -d "{\"email\": \"$RATE_LIMIT_EMAIL\", \"purpose\": \"register\"}")
 
 if echo "$SECOND_CODE" | grep -q "VERIFICATION_CODE_RATE_LIMIT"; then
     success "限流功能正常工作"
 else
     error "限流功能未生效"
+fi
+echo ""
+
+# Test 15.1: Login Failure Lockout
+info "测试 15.1: 登录失败锁定（5次失败锁定15分钟）"
+LOCK_EMAIL="lock_$(date +%s)@test.com"
+for i in {1..5}; do
+    curl -s -X POST "$BASE_URL/api/v1/auth/login" \
+        -H "Content-Type: application/json" \
+        -d "{\"email\": \"$LOCK_EMAIL\", \"code\": \"000000\"}" >/dev/null 2>&1 || true
+done
+
+LOCK_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\": \"$LOCK_EMAIL\", \"code\": \"000000\"}")
+
+if echo "$LOCK_RESPONSE" | grep -q "ACCOUNT_LOCKED"; then
+    success "登录锁定功能正常工作"
+else
+    error "登录锁定功能未生效"
 fi
 echo ""
 
@@ -262,6 +377,17 @@ if echo "$LOGOUT_RESPONSE" | grep -q "登出成功"; then
     success "用户登出成功"
 else
     error "用户登出失败"
+fi
+echo ""
+
+info "测试 16.1: 验证登出令牌已加入黑名单"
+AFTER_LOGOUT_PROFILE=$(curl -s "$BASE_URL/api/v1/members/me" \
+    -H "Authorization: Bearer $USER_TOKEN")
+
+if echo "$AFTER_LOGOUT_PROFILE" | grep -q "TOKEN_BLACKLISTED"; then
+    success "登出黑名单生效"
+else
+    error "登出黑名单未生效"
 fi
 echo ""
 

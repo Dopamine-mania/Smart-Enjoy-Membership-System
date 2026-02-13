@@ -9,6 +9,7 @@ from app.utils.redis_client import redis_client
 from app.config import settings
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
+from app.services.benefit_service import BenefitService
 
 
 class AuthService:
@@ -96,6 +97,13 @@ class AuthService:
 
         # Create user
         user = self.user_repo.create(email=email, nickname=nickname)
+
+        # Auto-distribute monthly benefits for new user (best-effort).
+        try:
+            BenefitService(self.db).distribute_current_monthly_benefits(user.id)
+        except Exception:
+            pass
+
         return user
 
     def login(self, email: str, code: str) -> tuple[str, User]:
@@ -133,6 +141,12 @@ class AuthService:
 
         # Reset login failure counter
         RateLimiter.reset_login_failure(email)
+
+        # Auto-distribute monthly benefits on login (best-effort).
+        try:
+            BenefitService(self.db).distribute_current_monthly_benefits(user.id)
+        except Exception:
+            pass
 
         # Create access token
         access_token, jti = create_access_token(user.id)

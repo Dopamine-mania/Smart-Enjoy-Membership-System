@@ -54,6 +54,12 @@ class BenefitRepository:
         benefits = query.order_by(desc(Benefit.created_at)).offset(skip).limit(limit).all()
         return benefits, total
 
+    def list_by_ids(self, benefit_ids: List[int]) -> List[Benefit]:
+        """List benefits by IDs."""
+        if not benefit_ids:
+            return []
+        return self.db.query(Benefit).filter(Benefit.id.in_(benefit_ids)).all()
+
     def get_distribution(self, user_id: int, benefit_id: int, period: str) -> Optional[BenefitDistribution]:
         """Get benefit distribution record."""
         return self.db.query(BenefitDistribution).filter(

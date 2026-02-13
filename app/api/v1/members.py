@@ -7,7 +7,7 @@ from app.repositories.user_repository import UserRepository
 from app.db.session import get_db
 from sqlalchemy.orm import Session
 from app.utils.timezone_utils import to_beijing_time
-from app.utils.data_masking import mask_email, mask_id_card
+from app.utils.data_masking import mask_email, mask_id_card_last_four
 
 router = APIRouter(prefix="/members", tags=["Members"])
 
@@ -24,7 +24,7 @@ async def get_profile(
         avatar_url=current_user.avatar_url,
         gender=current_user.gender,
         birthday=to_beijing_time(current_user.birthday),
-        id_card_last_four=current_user.id_card_last_four,
+        id_card_last_four=mask_id_card_last_four(current_user.id_card_last_four),
         member_level=current_user.member_level,
         available_points=current_user.available_points,
         total_earned_points=current_user.total_earned_points,
@@ -64,7 +64,7 @@ async def update_profile(
         avatar_url=current_user.avatar_url,
         gender=current_user.gender,
         birthday=to_beijing_time(current_user.birthday),
-        id_card_last_four=current_user.id_card_last_four,
+        id_card_last_four=mask_id_card_last_four(current_user.id_card_last_four),
         member_level=current_user.member_level,
         available_points=current_user.available_points,
         total_earned_points=current_user.total_earned_points,

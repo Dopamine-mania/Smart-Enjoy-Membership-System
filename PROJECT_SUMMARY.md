@@ -87,14 +87,13 @@
 
 1. **Docker 容器化**
    - Dockerfile
-   - docker-compose.yml（3个服务）
+   - docker-compose.yml（3个服务，一键启动）
    - 数据库初始化脚本
    - 健康检查配置
 
 2. **环境配置**
-   - .env 配置文件
-   - 配置验证
-   - 默认值设置
+   - 无需手动创建 `.env` 也可启动（本地测试默认值已内置）
+   - 支持用环境变量覆盖配置（生产环境建议）
 
 3. **文档**
    - 详细的 README.md
@@ -118,28 +117,26 @@
 ## 文件结构
 
 ```
-main/
+.
 ├── app/                        # 应用代码
-│   ├── api/v1/                # API 端点 (6个文件)
-│   ├── core/                  # 核心功能 (3个文件)
-│   ├── middleware/            # 中间件 (3个文件)
-│   ├── models/                # 数据库模型 (6个文件)
-│   ├── schemas/               # Pydantic 模型 (5个文件)
-│   ├── services/              # 业务逻辑 (4个文件)
-│   ├── repositories/          # 数据访问 (5个文件)
-│   ├── db/                    # 数据库会话
-│   ├── utils/                 # 工具函数 (4个文件)
-│   ├── main.py               # FastAPI 入口
-│   ├── config.py             # 配置管理
-│   └── dependencies.py       # 依赖注入
-├── docker/                    # Docker 配置
+│   ├── api/v1/                 # API 端点
+│   ├── core/                   # 核心功能
+│   ├── middleware/             # 中间件
+│   ├── models/                 # 数据库模型
+│   ├── schemas/                # Pydantic 模型
+│   ├── services/               # 业务逻辑
+│   ├── repositories/           # 数据访问
+│   ├── db/                     # 数据库会话
+│   ├── utils/                  # 工具函数
+│   ├── main.py                 # FastAPI 入口
+│   ├── config.py               # 配置管理
+│   └── dependencies.py         # 依赖注入
+├── docker/                     # Docker 镜像与初始化 SQL
 │   ├── Dockerfile
-│   ├── docker-compose.yml
 │   └── init-db.sql
-├── tests/                     # 测试目录
+├── docker-compose.yml          # 一键启动（从项目根目录执行）
 ├── requirements.txt           # Python 依赖
-├── .env                       # 环境变量
-├── .env.example              # 环境变量模板
+├── .env.example              # 可选（生产/自定义覆盖）
 ├── .gitignore                # Git 忽略文件
 ├── README.md                 # 项目文档
 ├── quickstart.py             # 快速启动脚本
@@ -152,8 +149,7 @@ main/
 ### 1. 启动服务
 
 ```bash
-cd docker
-docker compose up -d
+docker compose up -d --build
 ```
 
 ### 2. 验证 API

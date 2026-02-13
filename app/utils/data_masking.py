@@ -49,3 +49,19 @@ def mask_phone(phone: Optional[str]) -> Optional[str]:
         return "***"
 
     return phone[:3] + "****" + phone[-4:]
+
+
+def mask_id_card_last_four(last_four: Optional[str]) -> Optional[str]:
+    """
+    Mask last four digits of an ID card number.
+
+    Example: "1234" -> "***4"
+    """
+    if not last_four:
+        return None
+
+    value = str(last_four)
+    if len(value) != 4:
+        return "***"
+
+    return "***" + value[-1]

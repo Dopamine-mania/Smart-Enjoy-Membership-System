@@ -18,6 +18,13 @@ async def list_benefits(
     benefit_service: BenefitService = Depends(get_benefit_service)
 ):
     """List available benefits for current user's level."""
+    # Auto-distribute monthly benefits on first access.
+    try:
+        benefit_service.distribute_current_monthly_benefits(current_user.id)
+    except Exception:
+        # Do not block normal browsing if benefit distribution fails.
+        pass
+
     benefits = benefit_service.get_benefits_by_level(current_user.member_level)
 
     return [
@@ -43,22 +50,37 @@ async def get_my_benefits(
     benefit_service: BenefitService = Depends(get_benefit_service)
 ):
     """Get user's distributed benefits."""
+    # Auto-distribute monthly benefits on first access.
+    try:
+        benefit_service.distribute_current_monthly_benefits(current_user.id)
+    except Exception:
+        pass
+
     skip = (page - 1) * page_size
     distributions, total = benefit_service.get_user_benefits(current_user.id, skip, page_size)
 
-    items = [
-        BenefitDistributionResponse(
-            id=d.id,
-            benefit_id=d.benefit_id,
-            benefit_name="",  # Will be populated by join in production
-            benefit_type=d.benefit_id,  # Placeholder
-            period=d.period,
-            distributed_at=to_beijing_time(d.distributed_at),
-            expires_at=to_beijing_time(d.expires_at),
-            is_used=d.is_used,
-            used_at=to_beijing_time(d.used_at)
+    benefit_ids = list({d.benefit_id for d in distributions})
+    benefits = benefit_service.benefit_repo.list_by_ids(benefit_ids)
+    benefit_by_id = {b.id: b for b in benefits}
+
+    items = []
+    for d in distributions:
+        benefit = benefit_by_id.get(d.benefit_id)
+        if not benefit:
+            continue
+
+        items.append(
+            BenefitDistributionResponse(
+                id=d.id,
+                benefit_id=d.benefit_id,
+                benefit_name=benefit.name,
+                benefit_type=benefit.benefit_type,
+                period=d.period,
+                distributed_at=to_beijing_time(d.distributed_at),
+                expires_at=to_beijing_time(d.expires_at),
+                is_used=d.is_used,
+                used_at=to_beijing_time(d.used_at),
+            )
         )
-        for d in distributions
-    ]
 
     return PaginatedResponse.create(items, total, page, page_size)

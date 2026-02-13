@@ -6,6 +6,10 @@ import enum
 from app.db.session import Base
 
 
+def _enum_values(enum_cls):
+    return [e.value for e in enum_cls]
+
+
 class MemberLevel(str, enum.Enum):
     """Member level enum."""
     BRONZE = "bronze"
@@ -29,11 +33,16 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     nickname = Column(String(100))
     avatar_url = Column(String(500))
-    gender = Column(Enum(Gender))
+    gender = Column(Enum(Gender, native_enum=False, values_callable=_enum_values))
     birthday = Column(DateTime(timezone=True))
     id_card_last_four = Column(String(4))
 
-    member_level = Column(Enum(MemberLevel), default=MemberLevel.BRONZE, nullable=False, index=True)
+    member_level = Column(
+        Enum(MemberLevel, native_enum=False, values_callable=_enum_values),
+        default=MemberLevel.BRONZE,
+        nullable=False,
+        index=True,
+    )
     available_points = Column(Integer, default=0, nullable=False)
     total_earned_points = Column(Integer, default=0, nullable=False)
 

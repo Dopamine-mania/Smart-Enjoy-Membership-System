@@ -58,17 +58,17 @@ grep -r "C:\\\\" app/ 2>/dev/null | grep -v ".pyc"
 
 **操作**：
 ```bash
-ls -lh docker/docker-compose.yml docker/Dockerfile docker/init-db.sql
+ls -lh docker-compose.yml docker/Dockerfile docker/init-db.sql
 ```
 
 **检查点**：
-- [ ] docker-compose.yml 存在
+- [ ] docker-compose.yml 存在（项目根目录）
 - [ ] Dockerfile 存在
 - [ ] init-db.sql 存在
 
 **预期结果**：
 ```
--rw-r--r-- 1 user user 1.2K docker/docker-compose.yml
+-rw-r--r-- 1 user user 1.2K docker-compose.yml
 -rw-r--r-- 1 user user  500 docker/Dockerfile
 -rw-r--r-- 1 user user  8.5K docker/init-db.sql
 ```
@@ -81,7 +81,6 @@ ls -lh docker/docker-compose.yml docker/Dockerfile docker/init-db.sql
 
 **操作**：
 ```bash
-cd docker
 docker compose down -v
 ```
 
@@ -105,7 +104,7 @@ docker compose down -v
 
 **操作**：
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
 **检查点**：
@@ -263,11 +262,15 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 
 ### ✅ 测试 3.4: 登录锁定（5次失败锁定15分钟）
 
-**注册测试用户**：
+**注册测试用户**（先获取验证码，再注册）：
 ```bash
+CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "locktest@example.com", "purpose": "register"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
+
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "locktest@example.com", "code": "123456", "nickname": "LockTest"}'
+  -d "{\"email\": \"locktest@example.com\", \"code\": \"${CODE}\", \"nickname\": \"LockTest\"}"
 ```
 
 **连续5次错误登录**：
@@ -276,7 +279,7 @@ for i in {1..5}; do
   echo "尝试 $i:"
   curl -X POST http://localhost:8000/api/v1/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"email": "locktest@example.com", "code": "wrong"}'
+    -d '{"email": "locktest@example.com", "code": "000000"}'
   echo ""
 done
 ```
@@ -288,18 +291,18 @@ done
 ```bash
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "locktest@example.com", "code": "123456"}'
+  -d '{"email": "locktest@example.com", "code": "000000"}'
 ```
 
 **检查点**：
 - [ ] 返回 `"code": "ACCOUNT_LOCKED"`
-- [ ] 消息包含 "15分钟"
+- [ ] 返回中文错误信息（账号锁定 15 分钟）
 
 **预期结果**：
 ```json
 {
   "code": "ACCOUNT_LOCKED",
-  "message": "账户已锁定，请15分钟后再试",
+  "message": "账户已被锁定，请稍后再试",
   "trace_id": "uuid-format"
 }
 ```
@@ -310,12 +313,16 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 
 ### ✅ 测试 3.5: 数据脱敏
 
-**注册并登录**：
+**注册并登录**（先获取验证码，再注册）：
 ```bash
-# 注册
+# 获取验证码 + 注册
+CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "mask@example.com", "purpose": "register"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
+
 RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "mask@example.com", "code": "123456", "nickname": "MaskTest"}')
+  -d "{\"email\": \"mask@example.com\", \"code\": \"${CODE}\", \"nickname\": \"MaskTest\"}")
 
 # 提取 token
 TOKEN=$(echo $RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
@@ -540,7 +547,7 @@ grep "8000" README.md
 - GitHub 仓库地址：`https://github.com/Dopamine-mania/Smart-Enjoy-Membership-System`
 - Session 轨迹文件：`session_trace.json`（项目根目录）
 - 测试账号：`admin / admin123`
-- 启动命令：`cd docker && docker compose up -d`
+- 启动命令：`docker compose up -d --build`（在项目根目录执行）
 - 服务地址：`http://localhost:8000`
 - API 文档：`http://localhost:8000/docs`
 
@@ -573,7 +580,7 @@ docker compose up -d
 docker compose logs app
 
 # 检查数据库连接
-docker compose exec postgres psql -U postgres -d membership_db -c "\dt"
+docker compose exec postgres psql -U membership -d membership_db -c "\dt"
 
 # 检查 Redis 连接
 docker compose exec redis redis-cli ping
@@ -583,7 +590,7 @@ docker compose exec redis redis-cli ping
 **解决方案**：
 - 检查 Redis 是否正常运行
 - 查看应用日志中的 Redis 连接信息
-- 确认 `.env` 文件中的 Redis 配置正确
+- 如有自定义配置，确认环境变量（或可选 `.env`）中的 Redis 配置正确
 
 ### 问题 4: 数据脱敏不生效
 **解决方案**：

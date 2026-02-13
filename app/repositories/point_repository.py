@@ -2,6 +2,7 @@
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
+from datetime import datetime
 from app.models.point_transaction import PointTransaction, PointTransactionType, PointTransactionReason
 
 
@@ -45,7 +46,14 @@ class PointRepository:
             PointTransaction.idempotency_key == idempotency_key
         ).first()
 
-    def list_by_user(self, user_id: int, skip: int = 0, limit: int = 20) -> tuple[List[PointTransaction], int]:
+    def list_by_user(
+        self,
+        user_id: int,
+        start_date: datetime = None,
+        end_date: datetime = None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> tuple[List[PointTransaction], int]:
         """
         List user transactions with pagination.
 
@@ -53,6 +61,10 @@ class PointRepository:
             Tuple of (transactions, total_count)
         """
         query = self.db.query(PointTransaction).filter(PointTransaction.user_id == user_id)
+        if start_date:
+            query = query.filter(PointTransaction.created_at >= start_date)
+        if end_date:
+            query = query.filter(PointTransaction.created_at <= end_date)
         total = query.count()
         transactions = query.order_by(desc(PointTransaction.created_at)).offset(skip).limit(limit).all()
         return transactions, total

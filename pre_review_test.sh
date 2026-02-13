@@ -9,6 +9,17 @@ echo "           智享会员系统 - 审核前自测脚本"
 echo "════════════════════════════════════════════════════════════"
 echo ""
 
+# Prefer `docker compose` (v2). Fall back to legacy `docker-compose` if needed.
+COMPOSE=(docker compose)
+if ! docker compose version >/dev/null 2>&1; then
+    if command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE=(docker-compose)
+    else
+        echo "❌ 未检测到 Docker Compose（需要 docker compose 或 docker-compose）"
+        exit 1
+    fi
+fi
+
 # 颜色定义
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -23,10 +34,10 @@ FAILED=0
 test_result() {
     if [ $1 -eq 0 ]; then
         echo -e "${GREEN}✅ 通过${NC}"
-        ((PASSED++))
+        PASSED=$((PASSED + 1))
     else
         echo -e "${RED}❌ 失败${NC}"
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
     fi
 }
 
@@ -75,7 +86,7 @@ echo ""
 # 测试 3: Docker 配置检查
 echo "测试 3: Docker 配置完整性"
 echo -n "  检查 docker-compose.yml... "
-if [ -f "docker/docker-compose.yml" ]; then
+if [ -f "docker-compose.yml" ]; then
     test_result 0
 else
     test_result 1
@@ -102,32 +113,76 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 echo "准备启动 Docker 服务..."
-echo "命令: cd docker && docker compose up -d"
+echo "命令: docker compose up -d --build（在项目根目录执行）"
 echo ""
-echo -e "${YELLOW}⚠️  请手动执行以下命令：${NC}"
-echo "  cd docker"
-echo "  docker compose down -v  # 清理旧数据"
-echo "  docker compose up -d    # 启动服务"
-echo "  docker compose ps       # 检查状态"
-echo ""
-echo "预期结果："
-echo "  - postgres: Up (healthy)"
-echo "  - redis: Up (healthy)"
-echo "  - app: Up (healthy)"
-echo ""
-read -p "按回车键继续（确认已启动服务）..."
-echo ""
+echo "执行：清理旧环境（docker compose down -v）..."
+"${COMPOSE[@]}" down -v >/dev/null 2>&1 || true
 
-# 检查服务是否启动
-echo "检查服务状态..."
-cd docker 2>/dev/null || true
-if docker compose ps 2>/dev/null | grep -q "Up"; then
-    echo -e "${GREEN}✅ Docker 服务已启动${NC}"
-    ((PASSED++))
+echo "执行：启动服务（docker compose up -d --build）..."
+set +e
+UP_OUT=$("${COMPOSE[@]}" up -d --build 2>&1)
+UP_STATUS=$?
+set -e
+
+if [ $UP_STATUS -eq 0 ]; then
+    echo -e "${GREEN}✅ docker compose up 执行成功${NC}"
+    PASSED=$((PASSED + 1))
 else
-    echo -e "${YELLOW}⚠️  无法确认服务状态，请手动检查${NC}"
+    echo -e "${RED}❌ docker compose up 执行失败（这是红线项）${NC}"
+    echo "$UP_OUT"
+    FAILED=$((FAILED + 1))
 fi
-cd .. 2>/dev/null || true
+
+wait_healthy() {
+    local service="$1"
+    local timeout="${2:-90}"
+    local start_ts
+    start_ts=$(date +%s)
+
+    while true; do
+        local cid status now
+        cid=$("${COMPOSE[@]}" ps -q "$service" 2>/dev/null || true)
+        if [ -n "$cid" ]; then
+            status=$(docker inspect -f '{{.State.Health.Status}}' "$cid" 2>/dev/null || true)
+            if [ "$status" = "healthy" ]; then
+                return 0
+            fi
+        fi
+
+        now=$(date +%s)
+        if [ $((now - start_ts)) -ge "$timeout" ]; then
+            return 1
+        fi
+        sleep 2
+    done
+}
+
+echo "等待 postgres/redis 变为 healthy..."
+echo -n "  postgres... "
+if wait_healthy postgres 90; then
+    test_result 0
+else
+    test_result 1
+fi
+
+echo -n "  redis... "
+if wait_healthy redis 90; then
+    test_result 0
+else
+    test_result 1
+fi
+
+echo -n "  app 运行中... "
+APP_CID=$("${COMPOSE[@]}" ps -q app 2>/dev/null || true)
+if [ -n "$APP_CID" ] && [ "$(docker inspect -f '{{.State.Running}}' "$APP_CID" 2>/dev/null || echo false)" = "true" ]; then
+    test_result 0
+else
+    test_result 1
+fi
+
+echo ""
+echo "服务状态："
+"${COMPOSE[@]}" ps || true
 echo ""
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -135,9 +190,23 @@ echo "第三步：API 功能测试"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# 等待服务启动
-echo "等待服务完全启动（10秒）..."
-sleep 10
+# 等待服务就绪
+echo "等待服务就绪（/health 200）..."
+READY=0
+for i in {1..60}; do
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8000/health" 2>/dev/null || echo "000")
+    if [ "$CODE" = "200" ]; then
+        READY=1
+        break
+    fi
+    sleep 1
+done
+if [ "$READY" = "1" ]; then
+    echo -e "${GREEN}✅ /health 已就绪${NC}"
+else
+    echo -e "${RED}❌ /health 未就绪（60秒超时）${NC}"
+    FAILED=$((FAILED + 1))
+fi
 
 BASE_URL="http://localhost:8000"
 
@@ -156,7 +225,7 @@ echo ""
 
 # 测试 5: 验证码限流（1/分钟）
 echo "测试 5: 验证码限流（1/分钟，10/天）"
-TEST_EMAIL="ratelimit@test.com"
+TEST_EMAIL="ratelimit_$(date +%s)@test.com"
 
 echo "  第一次请求（应成功）..."
 RESPONSE1=$(curl -s -X POST "$BASE_URL/api/v1/auth/send-code" \
@@ -180,12 +249,19 @@ echo ""
 
 # 测试 6: 数据脱敏
 echo "测试 6: 数据脱敏"
-TEST_EMAIL2="mask@example.com"
+TEST_EMAIL2="mask$(date +%s)@example.com"
+
+echo "  获取注册验证码..."
+CODE_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/send-code" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\": \"$TEST_EMAIL2\", \"purpose\": \"register\"}" 2>/dev/null)
+
+CODE=$(echo "$CODE_RESPONSE" | grep -o '"code":"[^"]*"' | cut -d'"' -f4)
 
 echo "  注册用户..."
 REG_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"email\": \"$TEST_EMAIL2\", \"code\": \"123456\", \"nickname\": \"MaskTest\"}" 2>/dev/null)
+  -d "{\"email\": \"$TEST_EMAIL2\", \"code\": \"${CODE:-123456}\", \"nickname\": \"MaskTest\"}" 2>/dev/null)
 
 TOKEN=$(echo "$REG_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
@@ -237,7 +313,11 @@ ADMIN_TOKEN=$(echo "$ADMIN_RESPONSE" | grep -o '"access_token":"[^"]*"' | cut -d
 
 if [ -n "$ADMIN_TOKEN" ]; then
     echo -e "${GREEN}  ✅ 管理员登录成功${NC}"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
+
+    echo "  触发一条审计日志（查询用户列表）..."
+    curl -s "$BASE_URL/api/v1/admin/users?page=1&page_size=1" \
+      -H "Authorization: Bearer $ADMIN_TOKEN" >/dev/null 2>&1 || true
 
     echo "  查询审计日志..."
     AUDIT_LOGS=$(curl -s "$BASE_URL/api/v1/admin/audit-logs" \
@@ -251,7 +331,7 @@ if [ -n "$ADMIN_TOKEN" ]; then
     fi
 else
     echo -e "${RED}  ❌ 管理员登录失败${NC}"
-    ((FAILED++))
+    FAILED=$((FAILED + 1))
 fi
 echo ""
 

@@ -9,6 +9,7 @@ from app.repositories.benefit_repository import BenefitRepository
 from app.repositories.user_repository import UserRepository
 from app.core.error_codes import ErrorCode, BusinessException
 from app.utils.redis_client import redis_client
+from app.utils.timezone_utils import current_beijing_period, BEIJING_TZ
 
 
 class BenefitService:
@@ -26,6 +27,10 @@ class BenefitService:
     def get_user_benefits(self, user_id: int, skip: int = 0, limit: int = 20) -> tuple[List[BenefitDistribution], int]:
         """Get user's distributed benefits."""
         return self.benefit_repo.list_user_distributions(user_id, skip, limit)
+
+    def distribute_current_monthly_benefits(self, user_id: int) -> List[BenefitDistribution]:
+        """Distribute monthly benefits for current Beijing period."""
+        return self.distribute_monthly_benefits(user_id, current_beijing_period())
 
     def distribute_monthly_benefits(self, user_id: int, period: str) -> List[BenefitDistribution]:
         """
@@ -90,9 +95,9 @@ class BenefitService:
             if not benefit:
                 raise BusinessException(ErrorCode.BENEFIT_NOT_FOUND)
 
-            # Calculate expiry (end of month)
+            # Calculate expiry (end of month in Beijing time)
             year, month = map(int, period.split('-'))
-            expires_at = datetime(year, month, 1, tzinfo=timezone.utc) + relativedelta(months=1) - relativedelta(seconds=1)
+            expires_at = datetime(year, month, 1, tzinfo=BEIJING_TZ) + relativedelta(months=1) - relativedelta(seconds=1)
 
             # Create distribution record
             distribution = self.benefit_repo.create_distribution(

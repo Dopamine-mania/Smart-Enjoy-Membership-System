@@ -6,6 +6,7 @@ from app.services.auth_service import AuthService
 from app.services.point_service import PointService
 from app.services.benefit_service import BenefitService
 from app.services.admin_service import AdminService
+from app.services.order_service import OrderService
 
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
@@ -26,3 +27,8 @@ def get_benefit_service(db: Session = Depends(get_db)) -> BenefitService:
 def get_admin_service(db: Session = Depends(get_db)) -> AdminService:
     """Get admin service."""
     return AdminService(db)
+
+
+def get_order_service(db: Session = Depends(get_db)) -> OrderService:
+    """Get order service."""
+    return OrderService(db)

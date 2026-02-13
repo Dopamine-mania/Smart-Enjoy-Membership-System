@@ -6,6 +6,10 @@ from app.db.session import Base
 from app.models.user import MemberLevel
 
 
+def _enum_values(enum_cls):
+    return [e.value for e in enum_cls]
+
+
 class BenefitType(str, enum.Enum):
     """Benefit type enum."""
     DISCOUNT_COUPON = "discount_coupon"
@@ -21,9 +25,9 @@ class Benefit(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)
     description = Column(String(1000))
-    benefit_type = Column(Enum(BenefitType), nullable=False)
+    benefit_type = Column(Enum(BenefitType, native_enum=False, values_callable=_enum_values), nullable=False)
 
-    member_level = Column(Enum(MemberLevel), nullable=False, index=True)
+    member_level = Column(Enum(MemberLevel, native_enum=False, values_callable=_enum_values), nullable=False, index=True)
     value = Column(String(100))  # e.g., "100" for 100 points, "10%" for discount
 
     is_active = Column(Boolean, default=True, nullable=False)

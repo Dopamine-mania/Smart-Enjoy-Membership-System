@@ -26,7 +26,7 @@ from app.dependencies import get_admin_service, get_point_service, get_benefit_s
 from app.db.session import get_db
 from sqlalchemy.orm import Session
 from app.utils.timezone_utils import to_beijing_time
-from app.utils.data_masking import mask_email
+from app.utils.data_masking import mask_email, mask_id_card_last_four
 from app.core.error_codes import ErrorCode, BusinessException
 from app.config import settings
 
@@ -82,7 +82,7 @@ async def list_users(
             avatar_url=u.avatar_url,
             gender=u.gender,
             birthday=to_beijing_time(u.birthday),
-            id_card_last_four=u.id_card_last_four,
+            id_card_last_four=mask_id_card_last_four(u.id_card_last_four),
             member_level=u.member_level,
             available_points=u.available_points,
             total_earned_points=u.total_earned_points,
@@ -273,11 +273,15 @@ async def distribute_benefit(
     if not admin_service.check_permission(current_admin.id, "benefits.distribute"):
         raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
-    distribution = benefit_service._distribute_single_benefit(
-        user_id=distribute_request.user_id,
-        benefit_id=distribute_request.benefit_id,
-        period=distribute_request.period
-    )
+    try:
+        benefit_service._distribute_single_benefit(
+            user_id=distribute_request.user_id,
+            benefit_id=distribute_request.benefit_id,
+            period=distribute_request.period,
+        )
+    except BusinessException as e:
+        if e.code != ErrorCode.BENEFIT_ALREADY_DISTRIBUTED[0]:
+            raise
 
     # Log action
     admin_service.log_action(
@@ -299,6 +303,7 @@ async def list_all_orders(
     status: Optional[OrderStatus] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
+    request: Request = None,
     current_admin: AdminUser = Depends(get_current_admin),
     admin_service: AdminService = Depends(get_admin_service),
     db: Session = Depends(get_db)
@@ -337,6 +342,14 @@ async def list_all_orders(
         for o in orders
     ]
 
+    admin_service.log_action(
+        admin_user_id=current_admin.id,
+        action="list",
+        resource="orders",
+        details=f"status={status}, start_date={start_date}, end_date={end_date}, page={page}, page_size={page_size}",
+        trace_id=getattr(request.state, 'trace_id', None) if request else None,
+    )
+
     return PaginatedResponse.create(items, total, page, page_size)
 
 
@@ -345,6 +358,7 @@ async def list_audit_logs(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     admin_user_id: Optional[int] = None,
+    request: Request = None,
     current_admin: AdminUser = Depends(get_current_admin),
     admin_service: AdminService = Depends(get_admin_service)
 ):
@@ -371,5 +385,13 @@ async def list_audit_logs(
         )
         for log in logs
     ]
+
+    admin_service.log_action(
+        admin_user_id=current_admin.id,
+        action="list",
+        resource="audit_logs",
+        details=f"admin_user_id={admin_user_id}, page={page}, page_size={page_size}",
+        trace_id=getattr(request.state, 'trace_id', None) if request else None,
+    )
 
     return PaginatedResponse.create(items, total, page, page_size)

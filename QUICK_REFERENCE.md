@@ -7,8 +7,7 @@
 bash start.sh
 
 # 方式2: 手动启动
-cd docker
-docker compose up -d
+docker compose up -d --build
 ```
 
 ## 📋 默认账户
@@ -61,7 +60,7 @@ docker compose up -d
 ### 服务管理
 ```bash
 # 启动
-cd docker && docker compose up -d
+docker compose up -d --build
 
 # 停止
 docker compose down
@@ -82,7 +81,7 @@ docker compose down -v
 ### 数据库操作
 ```bash
 # 连接 PostgreSQL
-docker exec -it membership_postgres psql -U membership -d membership_db
+docker compose exec postgres psql -U membership -d membership_db
 
 # 查看用户
 SELECT id, email, nickname, member_level, available_points FROM users;
@@ -94,7 +93,7 @@ SELECT * FROM point_transactions ORDER BY created_at DESC LIMIT 10;
 ### Redis 操作
 ```bash
 # 连接 Redis
-docker exec -it membership_redis redis-cli
+docker compose exec redis redis-cli
 
 # 查看所有 key
 KEYS *
@@ -133,7 +132,7 @@ lsof -i :6379
 ### 数据库连接失败
 ```bash
 # 检查 PostgreSQL
-docker exec membership_postgres pg_isready -U membership
+docker compose exec postgres pg_isready -U membership
 
 # 重启数据库
 docker compose restart postgres
@@ -142,7 +141,7 @@ docker compose restart postgres
 ### Redis 连接失败
 ```bash
 # 检查 Redis
-docker exec membership_redis redis-cli ping
+docker compose exec redis redis-cli ping
 
 # 重启 Redis
 docker compose restart redis

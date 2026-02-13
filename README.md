@@ -42,13 +42,12 @@
 
 1. **克隆项目**
 ```bash
-cd main
+cd Smart-Enjoy-Membership-System
 ```
 
 2. **启动所有服务**
 ```bash
-cd docker
-docker compose up -d
+docker compose up -d --build
 ```
 
 3. **查看日志**
@@ -78,6 +77,14 @@ docker compose down
 ```bash
 docker compose down -v
 ```
+
+## 模型轨迹文件（审核要求）
+
+本仓库包含开发过程的模型轨迹文件（OpenAI messages 格式 + 原始 session）：
+
+- 转换后（OpenAI messages JSON）：`session_trace.json`（根目录）或 `session_trace/openai_messages.json`
+- 转换前（Codex session JSONL）：`session_trace/codex_session.jsonl`
+- 说明文档：`session_trace/README.md`
 
 ## API 验证步骤
 
@@ -110,23 +117,27 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 {
   "message": "验证码已发送",
   "data": {
-    "code": "123456"
+    "code": "037891"
   }
 }
 ```
 
-**注意**: 验证码会在控制台日志中显示（模拟邮件发送）
+**注意**: `code` 为 6 位数字验证码；该项目为便于测试会在响应中返回，并在控制台日志中打印（模拟邮件发送）。
 
 #### 2.2 注册用户
 
 ```bash
+CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "purpose": "register"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
+
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "code": "123456",
-    "nickname": "测试用户"
-  }'
+  -d "{
+    \"email\": \"test@example.com\",
+    \"code\": \"${CODE}\",
+    \"nickname\": \"测试用户\"
+  }"
 ```
 
 预期响应：
@@ -156,12 +167,16 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 #### 3.2 登录
 
 ```bash
+CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
+  -H "Content-Type: application/json" \
+  -d '{"email": "test@example.com", "purpose": "login"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
+
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "code": "123456"
-  }'
+  -d "{
+    \"email\": \"test@example.com\",
+    \"code\": \"${CODE}\"
+  }"
 ```
 
 ### 4. 获取用户资料
@@ -329,7 +344,7 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 ### 连接 PostgreSQL
 
 ```bash
-docker exec -it membership_postgres psql -U membership -d membership_db
+docker compose exec postgres psql -U membership -d membership_db
 ```
 
 ### 常用查询
@@ -351,7 +366,7 @@ SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 10;
 ### 连接 Redis
 
 ```bash
-docker exec -it membership_redis redis-cli
+docker compose exec redis redis-cli
 ```
 
 ### 常用 Redis 命令
@@ -376,48 +391,34 @@ KEYS jwt_blacklist:*
 ## 项目结构
 
 ```
-main/
-├── app/
-│   ├── main.py                 # FastAPI 应用入口
-│   ├── config.py               # 配置管理
-│   ├── dependencies.py         # 依赖注入
-│   ├── api/v1/                 # API 端点
-│   │   ├── auth.py            # 认证接口
-│   │   ├── members.py         # 会员接口
-│   │   ├── points.py          # 积分接口
-│   │   ├── benefits.py        # 权益接口
-│   │   ├── orders.py          # 订单接口
-│   │   └── admin.py           # 管理员接口
-│   ├── core/                   # 核心功能
-│   │   ├── security.py        # JWT 和密码
-│   │   ├── rate_limiter.py    # 限流器
-│   │   └── error_codes.py     # 错误码
-│   ├── middleware/             # 中间件
-│   │   ├── auth.py            # 认证中间件
-│   │   ├── error_handler.py   # 错误处理
-│   │   └── request_id.py      # 请求 ID
-│   ├── models/                 # 数据库模型
-│   ├── schemas/                # Pydantic 模型
-│   ├── services/               # 业务逻辑
-│   ├── repositories/           # 数据访问
-│   ├── db/                     # 数据库会话
-│   └── utils/                  # 工具函数
-├── docker/
+.
+├── app/                         # FastAPI 后端代码
+│   ├── main.py                  # FastAPI 应用入口
+│   ├── config.py                # 配置管理
+│   ├── dependencies.py          # 依赖注入
+│   ├── api/v1/                  # API 端点
+│   ├── core/                    # JWT/限流/错误码
+│   ├── middleware/              # 认证/错误处理/trace_id
+│   ├── models/                  # 数据库模型
+│   ├── schemas/                 # Pydantic 模型
+│   ├── services/                # 业务逻辑
+│   ├── repositories/            # 数据访问
+│   ├── db/                      # 数据库会话
+│   └── utils/                   # 工具函数（脱敏/时间等）
+├── docker/                      # Docker 镜像与初始化 SQL
 │   ├── Dockerfile
-│   ├── docker-compose.yml
 │   └── init-db.sql
+├── docker-compose.yml           # 一键启动（从项目根目录执行）
 ├── requirements.txt
-├── .env.example
+├── .env.example                 # 可选（生产/自定义覆盖）
 └── README.md
 ```
 
 ## 环境变量
 
-复制 `.env.example` 到 `.env` 并修改配置：
+无需创建 `.env` 也可直接启动（`docker-compose.yml` 已包含本地测试默认配置）。
 
-```bash
-cp .env.example .env
-```
+如需自定义配置，可通过系统环境变量覆盖，或创建 `.env`（可选）并在其中设置变量。
 
 主要配置项：
 - `DATABASE_URL`: PostgreSQL 连接字符串
@@ -467,7 +468,7 @@ docker compose logs redis
 
 ```bash
 # 检查 PostgreSQL 是否就绪
-docker exec membership_postgres pg_isready -U membership
+docker compose exec postgres pg_isready -U membership
 
 # 重启数据库
 docker compose restart postgres
@@ -477,7 +478,7 @@ docker compose restart postgres
 
 ```bash
 # 检查 Redis 是否运行
-docker exec membership_redis redis-cli ping
+docker compose exec redis redis-cli ping
 
 # 重启 Redis
 docker compose restart redis
@@ -490,7 +491,7 @@ docker compose restart redis
 docker compose down -v
 
 # 重新启动
-docker compose up -d
+docker compose up -d --build
 ```
 
 ## API 文档
@@ -499,36 +500,23 @@ docker compose up -d
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## 开发指南
+## 开发指南（可选）
 
-### 本地开发（不使用 Docker）
+本项目默认以 Docker Compose 作为唯一运行方式（验收亦基于此），不要求本机安装 PostgreSQL/Redis。
 
-1. **安装依赖**
-```bash
-pip install -r requirements.txt
-```
-
-2. **启动 PostgreSQL 和 Redis**
-```bash
-# 使用 Docker 只启动数据库
-docker compose up -d postgres redis
-```
-
-3. **运行数据库初始化脚本**
-```bash
-psql -U membership -d membership_db -f docker/init-db.sql
-```
-
-4. **启动应用**
-```bash
-cd main
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### 运行测试
+常用开发命令：
 
 ```bash
-pytest tests/
+# 语法检查
+python3 check_syntax.py
+
+# 启动/重启服务
+docker compose up -d --build
+docker compose restart app
+
+# 端到端验证
+bash verify_api.sh
+bash pre_review_test.sh
 ```
 
 ## 许可证

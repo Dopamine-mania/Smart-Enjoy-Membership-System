@@ -101,7 +101,7 @@ app/
 
 - 为新功能添加单元测试
 - 确保测试覆盖率不降低
-- 运行 `pytest` 确保所有测试通过
+- 运行 `bash verify_api.sh` / `bash pre_review_test.sh` 做端到端验证
 
 ### 文档
 
@@ -118,13 +118,13 @@ app/
 
 2. **启动服务**
    ```bash
-   cd docker
-   docker compose up -d
+   docker compose up -d --build
    ```
 
 3. **运行测试**
    ```bash
-   pytest tests/
+   # 当前仓库提供的是端到端自测脚本（更贴近验收流程）
+   bash verify_api.sh
    ```
 
 4. **代码检查**
