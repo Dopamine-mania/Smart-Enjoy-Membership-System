@@ -45,5 +45,5 @@ class PointTransaction(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        Index('idx_user_created', 'user_id', 'created_at'),
+        Index('idx_point_transactions_user_created', 'user_id', 'created_at'),
     )

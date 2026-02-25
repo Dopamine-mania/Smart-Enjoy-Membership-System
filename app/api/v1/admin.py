@@ -20,11 +20,7 @@ from app.models.order import OrderStatus
 from app.services.admin_service import AdminService
 from app.services.point_service import PointService
 from app.services.benefit_service import BenefitService
-from app.repositories.user_repository import UserRepository
-from app.repositories.order_repository import OrderRepository
 from app.dependencies import get_admin_service, get_point_service, get_benefit_service
-from app.db.session import get_db
-from sqlalchemy.orm import Session
 from app.utils.timezone_utils import to_beijing_time
 from app.utils.data_masking import mask_email, mask_id_card_last_four
 from app.core.error_codes import ErrorCode, BusinessException
@@ -63,16 +59,14 @@ async def list_users(
     request: Request = None,
     current_admin: AdminUser = Depends(get_current_admin),
     admin_service: AdminService = Depends(get_admin_service),
-    db: Session = Depends(get_db)
 ):
     """List all users (admin)."""
     # Check permission
     if not admin_service.check_permission(current_admin.id, "users.view"):
         raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
-    user_repo = UserRepository(db)
     skip = (page - 1) * page_size
-    users, total = user_repo.list_users(skip, page_size)
+    users, total = admin_service.list_users(skip, page_size)
 
     items = [
         UserProfileResponse(
@@ -109,33 +103,13 @@ async def update_user(
     request: Request = None,
     current_admin: AdminUser = Depends(get_current_admin),
     admin_service: AdminService = Depends(get_admin_service),
-    db: Session = Depends(get_db)
 ):
     """Update user (admin)."""
     # Check permission
     if not admin_service.check_permission(current_admin.id, "users.edit"):
         raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
-    user_repo = UserRepository(db)
-    user = user_repo.get_by_id(user_id)
-
-    if not user:
-        raise BusinessException(ErrorCode.USER_NOT_FOUND)
-
-    # Update fields
-    if update_request.nickname is not None:
-        user.nickname = update_request.nickname
-
-    if update_request.member_level is not None:
-        from app.models.user import MemberLevel
-        user.member_level = MemberLevel(update_request.member_level)
-
-    if update_request.is_locked is not None:
-        user.is_locked = update_request.is_locked
-        if update_request.is_locked and update_request.locked_reason:
-            user.locked_reason = update_request.locked_reason
-
-    user_repo.update(user)
+    user = admin_service.update_user(user_id, update_request)
 
     # Log action
     admin_service.log_action(
@@ -157,18 +131,13 @@ async def lock_user(
     request: Request = None,
     current_admin: AdminUser = Depends(get_current_admin),
     admin_service: AdminService = Depends(get_admin_service),
-    db: Session = Depends(get_db)
 ):
     """Lock user account (admin)."""
     # Check permission
     if not admin_service.check_permission(current_admin.id, "users.lock"):
         raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
-    user_repo = UserRepository(db)
-    user = user_repo.lock_user(user_id, reason)
-
-    if not user:
-        raise BusinessException(ErrorCode.USER_NOT_FOUND)
+    admin_service.lock_user(user_id, reason)
 
     # Log action
     admin_service.log_action(
@@ -274,7 +243,7 @@ async def distribute_benefit(
         raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
     try:
-        benefit_service._distribute_single_benefit(
+        benefit_service.distribute_single_benefit(
             user_id=distribute_request.user_id,
             benefit_id=distribute_request.benefit_id,
             period=distribute_request.period,
@@ -306,17 +275,15 @@ async def list_all_orders(
     request: Request = None,
     current_admin: AdminUser = Depends(get_current_admin),
     admin_service: AdminService = Depends(get_admin_service),
-    db: Session = Depends(get_db)
 ):
     """List all orders (admin)."""
     # Check permission
     if not admin_service.check_permission(current_admin.id, "orders.view"):
         raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
-    order_repo = OrderRepository(db)
     skip = (page - 1) * page_size
 
-    orders, total = order_repo.list_all(
+    orders, total = admin_service.list_all_orders(
         status=status,
         start_date=start_date,
         end_date=end_date,
@@ -374,7 +341,7 @@ async def list_audit_logs(
         AuditLogResponse(
             id=log.id,
             admin_user_id=log.admin_user_id,
-            admin_username="",  # Will be populated by join in production
+            admin_username=admin_username,
             action=log.action,
             resource=log.resource,
             resource_id=log.resource_id,
@@ -383,7 +350,7 @@ async def list_audit_logs(
             trace_id=log.trace_id,
             created_at=to_beijing_time(log.created_at)
         )
-        for log in logs
+        for log, admin_username in logs
     ]
 
     admin_service.log_action(

@@ -2,6 +2,7 @@
 from app.utils.redis_client import redis_client
 from app.config import settings
 from app.core.error_codes import ErrorCode, BusinessException
+from app.utils.timezone_utils import current_beijing_day, seconds_until_next_beijing_midnight
 
 
 class RateLimiter:
@@ -23,7 +24,7 @@ class RateLimiter:
             raise BusinessException(ErrorCode.VERIFICATION_CODE_RATE_LIMIT)
 
         # Check day limit
-        day_key = f"rate_limit:verification:{email}:day"
+        day_key = f"rate_limit:verification:{email}:day:{current_beijing_day()}"
         day_count = redis_client.get(day_key)
 
         if day_count and int(day_count) >= settings.VERIFICATION_CODE_RATE_LIMIT_DAY:
@@ -39,10 +40,10 @@ class RateLimiter:
             redis_client.expire(minute_key, 60)
 
         # Increment day counter
-        day_key = f"rate_limit:verification:{email}:day"
+        day_key = f"rate_limit:verification:{email}:day:{current_beijing_day()}"
         count = redis_client.incr(day_key)
         if count == 1:
-            redis_client.expire(day_key, 86400)
+            redis_client.expire(day_key, seconds_until_next_beijing_midnight())
 
     @staticmethod
     def check_account_lock(email: str) -> None:

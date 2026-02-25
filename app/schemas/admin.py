@@ -1,6 +1,8 @@
 """Admin schemas."""
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, field_serializer
 from typing import Optional, List
+
+from app.utils.data_masking import mask_email
 
 
 class AdminLoginRequest(BaseModel):
@@ -17,6 +19,10 @@ class AdminUserResponse(BaseModel):
     full_name: Optional[str]
     is_active: bool
     created_at: str
+
+    @field_serializer("email")
+    def _mask_email(self, value: str):
+        return mask_email(value) or ""
 
     class Config:
         from_attributes = True

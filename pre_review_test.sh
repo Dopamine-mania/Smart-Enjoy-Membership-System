@@ -46,6 +46,12 @@ echo "第一步：红线指标自测（一票否决项）"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# 清理构建产物（避免影响仓库整洁度检查）
+echo "预处理：清理 __pycache__/ *.pyc 等构建产物"
+find app -type d -name "__pycache__" -print -exec rm -rf {} + 2>/dev/null || true
+find app -type f -name "*.pyc" -print -delete 2>/dev/null || true
+echo ""
+
 # 测试 1: 检查 Session 轨迹文件
 echo "测试 1: 检查 Session 轨迹文件"
 echo -n "  检查 session_trace.json 是否存在... "
@@ -78,6 +84,25 @@ fi
 echo -n "  搜索 C:\\ 路径... "
 if grep -r "C:\\\\" app/ 2>/dev/null | grep -v ".pyc" | grep -q .; then
     test_result 1
+else
+    test_result 0
+fi
+echo ""
+
+# 测试 2.1: 仓库整洁度（不应包含 __pycache__/ *.pyc）
+echo "测试 2.1: 仓库整洁度（不应包含 __pycache__/ *.pyc）"
+echo -n "  检查 app/ 下是否存在 __pycache__... "
+if find app -type d -name "__pycache__" 2>/dev/null | grep -q .; then
+    test_result 1
+    find app -type d -name "__pycache__" 2>/dev/null | head -5
+else
+    test_result 0
+fi
+
+echo -n "  检查 app/ 下是否存在 *.pyc... "
+if find app -type f -name "*.pyc" 2>/dev/null | grep -q .; then
+    test_result 1
+    find app -type f -name "*.pyc" 2>/dev/null | head -5
 else
     test_result 0
 fi
@@ -210,6 +235,16 @@ fi
 
 BASE_URL="http://localhost:8000"
 
+get_latest_code_from_logs() {
+    local email="$1"
+    local since="${2:-2m}"
+
+    "${COMPOSE[@]}" logs --since "$since" app 2>/dev/null \
+        | grep -F "[MOCK EMAIL] Verification code for ${email}:" \
+        | tail -n 1 \
+        | sed -E 's/.*: ([0-9]{6}).*/\1/'
+}
+
 # 测试 4: 健康检查
 echo "测试 4: 健康检查"
 echo -n "  GET /health... "
@@ -256,7 +291,8 @@ CODE_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/send-code" \
   -H "Content-Type: application/json" \
   -d "{\"email\": \"$TEST_EMAIL2\", \"purpose\": \"register\"}" 2>/dev/null)
 
-CODE=$(echo "$CODE_RESPONSE" | grep -o '"code":"[^"]*"' | cut -d'"' -f4)
+sleep 1
+CODE=$(get_latest_code_from_logs "$TEST_EMAIL2" "2m")
 
 echo "  注册用户..."
 REG_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/register" \

@@ -35,6 +35,8 @@ services:
     ports:
       - "8000:8000"
     environment:
+      APP_ENV: ${APP_ENV:-development}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       DATABASE_URL: postgresql://membership:membership123@postgres:5432/membership_db
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}

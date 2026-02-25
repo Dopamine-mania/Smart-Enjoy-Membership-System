@@ -50,6 +50,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Archives
+*.zip
+
 # Testing
 .pytest_cache/
 .coverage

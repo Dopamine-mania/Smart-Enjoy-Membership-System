@@ -1,6 +1,6 @@
 """Authentication service."""
-import random
 from datetime import timedelta
+import logging
 from sqlalchemy.orm import Session
 from app.core.security import generate_verification_code, create_access_token, verify_password, hash_password
 from app.core.rate_limiter import RateLimiter
@@ -10,6 +10,9 @@ from app.config import settings
 from app.models.user import User
 from app.repositories.user_repository import UserRepository
 from app.services.benefit_service import BenefitService
+
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -43,9 +46,13 @@ class AuthService:
         # Increment rate limit counters
         RateLimiter.increment_verification_code_counter(email)
 
-        # TODO: Send real email via SMTP
-        # For now, just log it
-        print(f"[MOCK EMAIL] Verification code for {email}: {code}")
+        # Development-only mock: print verification code to stdout for manual testing.
+        # Never return the code in API responses.
+        if settings.APP_ENV in ("development", "test"):
+            logger.info("[MOCK EMAIL] Verification code for %s: %s", email, code)
+        else:
+            # Pure mock implementation: do not send or print plaintext code in production.
+            logger.info("Verification code generated for %s (delivery not configured)", email)
 
         return code
 
@@ -149,7 +156,7 @@ class AuthService:
             pass
 
         # Create access token
-        access_token, jti = create_access_token(user.id)
+        access_token, jti = create_access_token(subject_id=user.id, role="user")
 
         return access_token, user
 

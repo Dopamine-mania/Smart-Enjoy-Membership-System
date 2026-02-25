@@ -6,7 +6,7 @@ def mask_email(email: Optional[str]) -> Optional[str]:
     """
     Mask email address.
 
-    Example: "abc@example.com" -> "abc***@example.com"
+    Example: "admin@example.com" -> "a***n@example.com"
 
     Args:
         email: Email address to mask
@@ -17,15 +17,17 @@ def mask_email(email: Optional[str]) -> Optional[str]:
     if not email:
         return None
 
-    parts = email.split("@")
-    if len(parts) != 2:
+    if "@" not in email:
         return email
 
-    local, domain = parts
-    if len(local) <= 3:
-        masked_local = local + "***"
+    local, domain = email.split("@", 1)
+    if not local:
+        return f"***@{domain}"
+
+    if len(local) == 1:
+        masked_local = f"{local}***"
     else:
-        masked_local = local[:3] + "***"
+        masked_local = f"{local[0]}***{local[-1]}"
 
     return f"{masked_local}@{domain}"
 

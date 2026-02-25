@@ -60,9 +60,11 @@ class AdminRepository:
         admin_user_id: int = None,
         skip: int = 0,
         limit: int = 50
-    ) -> tuple[List[AuditLog], int]:
-        """List audit logs."""
-        query = self.db.query(AuditLog)
+    ) -> tuple[List[tuple[AuditLog, str]], int]:
+        """List audit logs with admin username."""
+        query = self.db.query(AuditLog, AdminUser.username).join(
+            AdminUser, AdminUser.id == AuditLog.admin_user_id
+        )
 
         if admin_user_id:
             query = query.filter(AuditLog.admin_user_id == admin_user_id)

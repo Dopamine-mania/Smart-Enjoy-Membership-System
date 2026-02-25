@@ -28,6 +28,10 @@ class BenefitService:
         """Get user's distributed benefits."""
         return self.benefit_repo.list_user_distributions(user_id, skip, limit)
 
+    def get_benefits_by_ids(self, benefit_ids: List[int]) -> List[Benefit]:
+        """Get benefits by IDs."""
+        return self.benefit_repo.list_by_ids(benefit_ids)
+
     def distribute_current_monthly_benefits(self, user_id: int) -> List[BenefitDistribution]:
         """Distribute monthly benefits for current Beijing period."""
         return self.distribute_monthly_benefits(user_id, current_beijing_period())
@@ -112,6 +116,10 @@ class BenefitService:
 
         finally:
             redis_client.delete(lock_key)
+
+    def distribute_single_benefit(self, user_id: int, benefit_id: int, period: str) -> BenefitDistribution:
+        """Public wrapper to distribute a single benefit."""
+        return self._distribute_single_benefit(user_id, benefit_id, period)
 
     def create_benefit(
         self,

@@ -7,9 +7,6 @@ from app.utils.pagination import PaginatedResponse
 from app.middleware.auth import get_current_user
 from app.models.user import User
 from app.models.order import OrderStatus
-from app.repositories.order_repository import OrderRepository
-from app.db.session import get_db
-from sqlalchemy.orm import Session
 from app.utils.timezone_utils import to_beijing_time
 from app.services.order_service import OrderService
 from app.dependencies import get_order_service
@@ -80,19 +77,18 @@ async def list_orders(
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    order_service: OrderService = Depends(get_order_service),
 ):
     """List user orders with filters."""
-    order_repo = OrderRepository(db)
     skip = (page - 1) * page_size
 
-    orders, total = order_repo.list_by_user(
+    orders, total = order_service.list_orders_by_user(
         user_id=current_user.id,
         status=status,
         start_date=start_date,
         end_date=end_date,
         skip=skip,
-        limit=page_size
+        limit=page_size,
     )
 
     items = [_to_order_response(o) for o in orders]

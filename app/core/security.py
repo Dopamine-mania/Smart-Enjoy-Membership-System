@@ -21,7 +21,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> tuple[str, str]:
+def create_access_token(
+    subject_id: int,
+    role: str,
+    expires_delta: Optional[timedelta] = None,
+) -> tuple[str, str]:
     """
     Create JWT access token.
 
@@ -36,7 +40,8 @@ def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None)
     jti = str(uuid.uuid4())
 
     to_encode = {
-        "sub": str(user_id),
+        "sub": str(subject_id),
+        "role": role,
         "exp": expire,
         "jti": jti,
         "iat": datetime.now(timezone.utc)

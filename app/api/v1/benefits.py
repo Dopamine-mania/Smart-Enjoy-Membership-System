@@ -60,7 +60,7 @@ async def get_my_benefits(
     distributions, total = benefit_service.get_user_benefits(current_user.id, skip, page_size)
 
     benefit_ids = list({d.benefit_id for d in distributions})
-    benefits = benefit_service.benefit_repo.list_by_ids(benefit_ids)
+    benefits = benefit_service.get_benefits_by_ids(benefit_ids)
     benefit_by_id = {b.id: b for b in benefits}
 
     items = []

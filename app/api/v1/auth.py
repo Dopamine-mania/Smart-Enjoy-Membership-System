@@ -18,17 +18,16 @@ from app.utils.data_masking import mask_email
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/send-code", response_model=SuccessResponse)
+@router.post("/send-code", response_model=SuccessResponse, response_model_exclude_none=True)
 async def send_verification_code(
     request: VerificationCodeRequest,
     auth_service: AuthService = Depends(get_auth_service)
 ):
     """Send verification code to email."""
-    code = auth_service.send_verification_code(request.email, request.purpose)
+    auth_service.send_verification_code(request.email, request.purpose)
 
     return SuccessResponse(
-        message="验证码已发送",
-        data={"code": code}  # For testing only, remove in production
+        message="Verification code sent",
     )
 
 
@@ -42,7 +41,7 @@ async def register(
 
     # Create access token
     from app.core.security import create_access_token
-    access_token, jti = create_access_token(user.id)
+    access_token, jti = create_access_token(subject_id=user.id, role="user")
 
     return TokenResponse(
         access_token=access_token,
@@ -90,7 +89,7 @@ async def refresh_token(
     """Refresh access token."""
     from app.core.security import create_access_token
 
-    access_token, jti = create_access_token(current_user.id)
+    access_token, jti = create_access_token(subject_id=current_user.id, role="user")
 
     return TokenResponse(
         access_token=access_token,

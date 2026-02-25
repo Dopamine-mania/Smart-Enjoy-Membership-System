@@ -46,5 +46,5 @@ class Order(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     __table_args__ = (
-        Index('idx_user_created', 'user_id', 'created_at'),
+        Index('idx_orders_user_created', 'user_id', 'created_at'),
     )

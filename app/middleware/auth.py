@@ -35,6 +35,10 @@ async def get_current_user(
     try:
         # Decode token
         payload = decode_access_token(token)
+        role = payload.get("role")
+        if role != "user":
+            raise BusinessException(ErrorCode.PERMISSION_DENIED)
+
         user_id = int(payload.get("sub"))
         jti = payload.get("jti")
 
@@ -59,6 +63,7 @@ async def get_current_user(
         request.state.user = user
         request.state.jti = jti
         request.state.token_exp = payload.get("exp")
+        request.state.role = role
 
         return user
 
@@ -96,13 +101,17 @@ async def get_current_admin(
     try:
         # Decode token
         payload = decode_access_token(token)
-        user_id = int(payload.get("sub"))
-
-        # Admin tokens have negative user_id
-        if user_id >= 0:
+        role = payload.get("role")
+        if role != "admin":
             raise BusinessException(ErrorCode.PERMISSION_DENIED)
 
-        admin_id = abs(user_id)
+        admin_id = int(payload.get("sub"))
+        jti = payload.get("jti")
+
+        # Check if token is blacklisted
+        auth_service = AuthService(db)
+        if auth_service.is_token_blacklisted(jti):
+            raise BusinessException(ErrorCode.TOKEN_BLACKLISTED)
 
         # Get admin
         admin_repo = AdminRepository(db)
@@ -117,6 +126,9 @@ async def get_current_admin(
 
         # Store in request state
         request.state.admin = admin
+        request.state.jti = jti
+        request.state.token_exp = payload.get("exp")
+        request.state.role = role
 
         return admin
 

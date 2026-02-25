@@ -1,5 +1,6 @@
 """Main FastAPI application."""
 import uuid
+import logging
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -12,20 +13,56 @@ from app.middleware.error_handler import error_handler_middleware
 from app.middleware.request_id import request_id_middleware
 from app.api.v1 import auth, members, points, benefits, orders, admin
 from app.core.error_codes import ErrorCode
+from app.core.logging_config import setup_logging
+
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
+    if settings.APP_ENV == "production" and settings.ADMIN_PASSWORD == "admin123":
+        logger.critical("\033[91m[CRITICAL] Production mode detected with default admin password! Server refusal to start.\033[0m")
+        raise RuntimeError("Refusing to start in production with default ADMIN_PASSWORD. Set ADMIN_PASSWORD to a strong value.")
+
+    if settings.APP_ENV == "production" and settings.JWT_SECRET_KEY == "your-secret-key-change-in-production":
+        raise RuntimeError("Refusing to start in production with default JWT_SECRET_KEY. Set JWT_SECRET_KEY to a strong value.")
+
+    if settings.APP_ENV == "production":
+        # Extra safeguard: refuse to start if database still contains default admin password hash.
+        # Default hash corresponds to "admin123" in docker/init-db.sql.
+        default_admin_hash = "$2b$12$fluRnLYsajPpXfV6QMKdfOURBjxZxf3GJ3KEEY.BznQaAHkbQ9HWO"
+        try:
+            from sqlalchemy import text
+            from app.db.session import engine
+
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT password_hash FROM admin_users WHERE username='admin' LIMIT 1")
+                ).fetchone()
+                if row and row[0] == default_admin_hash:
+                    logger.critical("\033[91m[CRITICAL] Production mode detected with default admin password! Server refusal to start.\033[0m")
+                    raise RuntimeError("Refusing to start in production with default admin password hash in database. Change admin password.")
+        except RuntimeError:
+            raise
+        except Exception:
+            # Any database access issue in production is treated as fatal for safety.
+            logger.critical("\033[91m[CRITICAL] Production mode admin password validation failed! Server refusal to start.\033[0m")
+            raise
+
     # Startup
-    redis_client.connect()
-    print("✓ Redis connected")
+    if settings.APP_ENV != "test":
+        redis_client.connect()
+        logger.info("Redis connected")
 
     yield
 
     # Shutdown
-    redis_client.disconnect()
-    print("✓ Redis disconnected")
+    if settings.APP_ENV != "test":
+        redis_client.disconnect()
+        logger.info("Redis disconnected")
 
 
 # Create FastAPI app

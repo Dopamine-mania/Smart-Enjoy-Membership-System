@@ -1,4 +1,5 @@
 """Point service for points management."""
+from decimal import Decimal, ROUND_FLOOR
 from sqlalchemy.orm import Session
 from app.models.point_transaction import PointTransaction, PointTransactionType, PointTransactionReason
 from app.models.user import User
@@ -16,7 +17,24 @@ class PointService:
         self.user_repo = UserRepository(db)
         self.point_repo = PointRepository(db)
 
-    def earn_points_from_order(self, user_id: int, order_id: int, amount: float) -> PointTransaction:
+    @staticmethod
+    def calculate_points(amount: Decimal) -> int:
+        """
+        Calculate points from order amount using floor strategy.
+
+        Business rule: points = floor(amount), to avoid over-issuing points.
+        Example: 12.99 -> 12 points.
+        """
+        if amount is None:
+            return 0
+        if not isinstance(amount, Decimal):
+            amount = Decimal(str(amount))
+
+        floored = amount.to_integral_value(rounding=ROUND_FLOOR)
+        points = int(floored)
+        return max(points, 0)
+
+    def earn_points_from_order(self, user_id: int, order_id: int, amount: Decimal) -> PointTransaction:
         """
         Earn points from order completion.
 
@@ -28,8 +46,8 @@ class PointService:
         Returns:
             Point transaction record
         """
-        # Calculate points (1 yuan = 1 point)
-        points = int(amount)
+        # Calculate points (1 yuan = 1 point, floor strategy)
+        points = self.calculate_points(amount)
 
         # Idempotency key
         idempotency_key = f"order_points:{order_id}"

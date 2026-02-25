@@ -1,8 +1,9 @@
 """Pydantic schemas for API requests and responses."""
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_serializer
 from typing import Optional
 from datetime import datetime
 from app.models.user import MemberLevel, Gender
+from app.utils.data_masking import mask_email
 
 
 class VerificationCodeRequest(BaseModel):
@@ -44,6 +45,10 @@ class UserProfileResponse(BaseModel):
     available_points: int
     total_earned_points: int
     created_at: str
+
+    @field_serializer("email")
+    def _mask_email(self, value: str):
+        return mask_email(value) or ""
 
     class Config:
         from_attributes = True

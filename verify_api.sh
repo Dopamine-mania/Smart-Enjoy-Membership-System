@@ -37,6 +37,24 @@ info() {
     echo -e "${YELLOW}→ $1${NC}"
 }
 
+get_latest_code_from_logs() {
+    local email="$1"
+    local since="${2:-5m}"
+
+    # This project prints verification codes only in development/test mode:
+    # [MOCK EMAIL] Verification code for <email>: <6digits>
+    if docker compose ps -q app >/dev/null 2>&1; then
+        docker compose logs --since "$since" app 2>/dev/null \
+            | grep -F "[MOCK EMAIL] Verification code for ${email}:" \
+            | tail -n 1 \
+            | sed -E 's/.*: ([0-9]{6}).*/\1/'
+        return 0
+    fi
+
+    echo ""
+    return 0
+}
+
 # Test 1: Health Check
 info "测试 1: 健康检查"
 HEALTH=$(curl -s "$BASE_URL/health")
@@ -53,9 +71,14 @@ SEND_CODE_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/send-code" \
     -H "Content-Type: application/json" \
     -d "{\"email\": \"$EMAIL\", \"purpose\": \"register\"}")
 
-if echo "$SEND_CODE_RESPONSE" | grep -q "验证码已发送"; then
-    CODE=$(echo "$SEND_CODE_RESPONSE" | grep -o '"code":"[^"]*"' | cut -d'"' -f4)
-    success "验证码发送成功: $CODE"
+if echo "$SEND_CODE_RESPONSE" | grep -q "Verification code sent"; then
+    sleep 1
+    CODE=$(get_latest_code_from_logs "$EMAIL" "2m")
+    if [ -n "$CODE" ]; then
+        success "验证码发送成功（从日志读取）: $CODE"
+    else
+        error "验证码发送成功但未能从日志读取验证码（请确认 APP_ENV=development 且查看 docker compose logs app）"
+    fi
 else
     error "验证码发送失败"
 fi
@@ -79,7 +102,15 @@ else
         -H "Content-Type: application/json" \
         -d "{\"email\": \"$EMAIL\", \"purpose\": \"login\"}")
 
-    LOGIN_CODE=$(echo "$SEND_LOGIN_CODE" | grep -o '"code":"[^"]*"' | cut -d'"' -f4)
+    if ! echo "$SEND_LOGIN_CODE" | grep -q "Verification code sent"; then
+        error "发送登录验证码失败"
+    fi
+
+    sleep 1
+    LOGIN_CODE=$(get_latest_code_from_logs "$EMAIL" "2m")
+    if [ -z "$LOGIN_CODE" ]; then
+        error "未能从日志读取登录验证码（请确认 APP_ENV=development）"
+    fi
 
     # Login
     LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/api/v1/auth/login" \

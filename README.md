@@ -7,7 +7,7 @@
 ### 核心功能
 - ✅ **邮箱验证码认证** - 基于邮箱的注册/登录，带验证码验证
 - ✅ **JWT 令牌管理** - 2小时过期，支持刷新和黑名单
-- ✅ **积分系统** - 订单完成自动赚取积分，支持幂等性
+- ✅ **积分系统** - 订单完成自动赚取积分，支持幂等性（积分 = `floor(订单金额)`，例如 12.99 元积 12 分）
 - ✅ **会员等级** - Bronze/Silver/Gold/Platinum 四个等级
 - ✅ **权益发放** - 按月自动发放权益，分布式锁防重复
 - ✅ **订单管理** - 订单查询、状态跟踪
@@ -28,7 +28,6 @@
 - **Redis 7** - 缓存、限流、JWT 黑名单
 - **Docker Compose** - 容器化部署
 - **SQLAlchemy** - ORM
-- **Alembic** - 数据库迁移
 - **JWT** - 身份认证
 
 ## 快速开始
@@ -50,6 +49,8 @@ cd Smart-Enjoy-Membership-System
 docker compose up -d --build
 ```
 
+数据库表在应用启动时自动初始化，无需手动执行迁移脚本。
+
 3. **查看日志**
 ```bash
 docker compose logs -f app
@@ -65,6 +66,13 @@ docker compose ps
 - API 文档: http://localhost:8000/docs
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
+
+## 当前验收状态（2026-02-25）
+
+- `docker compose up -d --build`：可成功启动 `app + postgres + redis`
+- `docker compose ps`：`app` 为 `Up`，`postgres/redis` 为 `Up (healthy)`
+- 健康检查：`curl http://localhost:8000/health` 返回 `{"status":"healthy"}`
+- 单元测试：`pytest -q` 通过（`3 passed`）
 
 ### 停止服务
 
@@ -115,27 +123,31 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 预期响应：
 ```json
 {
-  "message": "验证码已发送",
-  "data": {
-    "code": "037891"
-  }
+  "message": "Verification code sent"
 }
 ```
 
-**注意**: `code` 为 6 位数字验证码；该项目为便于测试会在响应中返回，并在控制台日志中打印（模拟邮件发送）。
+**注意**：
+- `code` 为 6 位数字验证码，**不会**在任何 API 响应中返回（安全合规要求）。
+- 开发模式（`APP_ENV=development`）下，验证码仅会以 `[MOCK EMAIL]` 形式打印到应用控制台日志。
+
+查看验证码（Docker）：
+```bash
+docker compose logs -f app
+```
+你会看到类似日志（示例）：
+```
+[MOCK EMAIL] Verification code for test@example.com: 037891
+```
 
 #### 2.2 注册用户
 
 ```bash
-CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "purpose": "register"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
-
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"test@example.com\",
-    \"code\": \"${CODE}\",
+    \"code\": \"从 docker logs 中复制的 6 位验证码\",
     \"nickname\": \"测试用户\"
   }"
 ```
@@ -167,15 +179,11 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 #### 3.2 登录
 
 ```bash
-CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "purpose": "login"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
-
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"test@example.com\",
-    \"code\": \"${CODE}\"
+    \"code\": \"从 docker logs 中复制的 6 位验证码\"
   }"
 ```
 
@@ -314,6 +322,10 @@ curl "http://localhost:8000/api/v1/admin/audit-logs?page=1&page_size=50" \
 
 ### 测试验证码限流（1次/分钟）
 
+说明：
+- 分钟限流：同一邮箱 60 秒内最多 1 次
+- 日限流：同一邮箱每天最多 10 次（按北京时间自然日 00:00 重置）
+
 ```bash
 # 第一次请求 - 成功
 curl -X POST http://localhost:8000/api/v1/auth/send-code \
@@ -421,6 +433,8 @@ KEYS jwt_blacklist:*
 如需自定义配置，可通过系统环境变量覆盖，或创建 `.env`（可选）并在其中设置变量。
 
 主要配置项：
+- `APP_ENV`: 运行环境（`development`/`production`），默认 `development`
+- `ADMIN_PASSWORD`: 管理员默认密码（用于生产环境启动安全校验；生产环境必须修改）
 - `DATABASE_URL`: PostgreSQL 连接字符串
 - `REDIS_URL`: Redis 连接字符串
 - `JWT_SECRET_KEY`: JWT 密钥（生产环境必须修改）
@@ -445,9 +459,13 @@ KEYS jwt_blacklist:*
 2. **修改默认密码**: 修改管理员默认密码
 3. **启用 HTTPS**: 使用反向代理（Nginx）配置 SSL
 4. **配置防火墙**: 限制数据库和 Redis 端口访问
-5. **启用真实邮件**: 配置 SMTP 发送真实验证码邮件
+5. **邮件发送扩展**: 当前为纯 Mock（仅开发模式打印验证码），可后续接入自建邮件服务（本项目不包含任何外部 SMTP 依赖）
 6. **日志监控**: 配置日志收集和监控告警
 7. **备份策略**: 定期备份 PostgreSQL 数据
+
+**生产环境强制保护**：
+- 当 `APP_ENV=production` 且 `JWT_SECRET_KEY` 仍为默认值时，应用会拒绝启动（避免误上线弱配置）。
+- 当 `APP_ENV=production` 且 `ADMIN_PASSWORD` 仍为默认值（`admin123`）时，应用会拒绝启动。
 
 ## 故障排查
 

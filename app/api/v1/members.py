@@ -3,9 +3,8 @@ from fastapi import APIRouter, Depends
 from app.schemas.user import UserProfileResponse, UpdateProfileRequest
 from app.middleware.auth import get_current_user
 from app.models.user import User
-from app.repositories.user_repository import UserRepository
-from app.db.session import get_db
-from sqlalchemy.orm import Session
+from app.services.member_service import MemberService
+from app.dependencies import get_member_service
 from app.utils.timezone_utils import to_beijing_time
 from app.utils.data_masking import mask_email, mask_id_card_last_four
 
@@ -36,26 +35,10 @@ async def get_profile(
 async def update_profile(
     request: UpdateProfileRequest,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    member_service: MemberService = Depends(get_member_service),
 ):
     """Update user profile."""
-    user_repo = UserRepository(db)
-
-    # Update fields
-    if request.nickname is not None:
-        current_user.nickname = request.nickname
-
-    if request.avatar_url is not None:
-        current_user.avatar_url = request.avatar_url
-
-    if request.gender is not None:
-        current_user.gender = request.gender
-
-    if request.birthday is not None:
-        current_user.birthday = request.birthday
-
-    # Save changes
-    user_repo.update(current_user)
+    current_user = member_service.update_profile(current_user, request)
 
     return UserProfileResponse(
         id=current_user.id,

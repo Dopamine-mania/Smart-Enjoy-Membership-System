@@ -8,6 +8,8 @@ from app.models.order import Order, OrderStatus
 from app.repositories.order_repository import OrderRepository
 from app.services.point_service import PointService
 from app.utils.timezone_utils import get_current_beijing_time, utc_now
+from datetime import datetime
+from typing import Optional, Tuple, List
 
 
 class OrderService:
@@ -69,7 +71,7 @@ class OrderService:
                 order.paid_at = utc_now()
 
         # Points are idempotent by order_id.
-        self.point_service.earn_points_from_order(order.user_id, order.id, float(order.amount))
+        self.point_service.earn_points_from_order(order.user_id, order.id, order.amount)
         self.db.commit()
         self.db.refresh(order)
         return order
@@ -90,7 +92,7 @@ class OrderService:
 
         # Only deduct points if order had been completed.
         if order.status == OrderStatus.COMPLETED:
-            points = int(float(order.amount))
+            points = self.point_service.calculate_points(order.amount)
             if points > 0:
                 self.point_service.deduct_points_for_refund(order.user_id, order.id, points)
 
@@ -100,3 +102,38 @@ class OrderService:
         self.db.refresh(order)
         return order
 
+    def list_orders_by_user(
+        self,
+        user_id: int,
+        status: Optional[OrderStatus] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> Tuple[List[Order], int]:
+        """List orders for a user with optional filters."""
+        return self.order_repo.list_by_user(
+            user_id=user_id,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            skip=skip,
+            limit=limit,
+        )
+
+    def list_all_orders(
+        self,
+        status: Optional[OrderStatus] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        skip: int = 0,
+        limit: int = 20,
+    ) -> Tuple[List[Order], int]:
+        """List all orders (admin) with optional filters."""
+        return self.order_repo.list_all(
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            skip=skip,
+            limit=limit,
+        )

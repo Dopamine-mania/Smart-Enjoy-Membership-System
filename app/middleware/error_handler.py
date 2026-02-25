@@ -1,15 +1,20 @@
 """Global error handler middleware."""
 import uuid
-import traceback
+import logging
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from app.core.error_codes import BusinessException, ErrorCode
+from app.core.logging_config import trace_id_var
+
+
+logger = logging.getLogger(__name__)
 
 
 async def error_handler_middleware(request: Request, call_next):
     """Global error handler middleware."""
     trace_id = str(uuid.uuid4())
     request.state.trace_id = trace_id
+    token = trace_id_var.set(trace_id)
 
     try:
         response = await call_next(request)
@@ -29,8 +34,7 @@ async def error_handler_middleware(request: Request, call_next):
 
     except Exception as e:
         # Unexpected exception
-        print(f"[ERROR] Trace ID: {trace_id}")
-        print(traceback.format_exc())
+        logger.error("Unhandled exception", exc_info=True)
 
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -40,3 +44,5 @@ async def error_handler_middleware(request: Request, call_next):
                 "trace_id": trace_id
             }
         )
+    finally:
+        trace_id_var.reset(token)

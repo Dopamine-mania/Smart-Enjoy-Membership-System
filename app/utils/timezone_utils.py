@@ -45,3 +45,17 @@ def current_beijing_period() -> str:
     """Get current period string (YYYY-MM) in Beijing timezone."""
     now = get_current_beijing_time()
     return now.strftime("%Y-%m")
+
+
+def current_beijing_day() -> str:
+    """Get current day string (YYYYMMDD) in Beijing timezone."""
+    now = get_current_beijing_time()
+    return now.strftime("%Y%m%d")
+
+
+def seconds_until_next_beijing_midnight() -> int:
+    """Seconds until next Beijing midnight (natural day reset)."""
+    now = get_current_beijing_time()
+    next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    seconds = int((next_midnight - now).total_seconds())
+    return max(seconds, 1)

@@ -224,15 +224,22 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 
 **检查点**：
 - [ ] 返回成功响应
-- [ ] 包含 `"code": "SUCCESS"`
+- [ ] 返回 `{"message": "Verification code sent"}`
 
 **预期结果**：
 ```json
 {
-  "code": "SUCCESS",
-  "message": "验证码已发送",
-  "data": {...}
+  "message": "Verification code sent"
 }
+```
+
+**注意**：验证码不会在任何 API 响应中返回。开发模式下请通过日志获取验证码（示例）：
+```bash
+docker compose logs -f app
+```
+查找类似日志：
+```
+[MOCK EMAIL] Verification code for test@example.com: 037891
 ```
 
 **立即第二次请求（应失败）**：
@@ -264,13 +271,13 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 
 **注册测试用户**（先获取验证码，再注册）：
 ```bash
-CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
+curl -X POST http://localhost:8000/api/v1/auth/send-code \
   -H "Content-Type: application/json" \
-  -d '{"email": "locktest@example.com", "purpose": "register"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
+  -d '{"email": "locktest@example.com", "purpose": "register"}'
 
 curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d "{\"email\": \"locktest@example.com\", \"code\": \"${CODE}\", \"nickname\": \"LockTest\"}"
+  -d "{\"email\": \"locktest@example.com\", \"code\": \"从 docker logs 中复制的 6 位验证码\", \"nickname\": \"LockTest\"}"
 ```
 
 **连续5次错误登录**：
@@ -316,13 +323,13 @@ curl -X POST http://localhost:8000/api/v1/auth/login \
 **注册并登录**（先获取验证码，再注册）：
 ```bash
 # 获取验证码 + 注册
-CODE=$(curl -s -X POST http://localhost:8000/api/v1/auth/send-code \
+curl -X POST http://localhost:8000/api/v1/auth/send-code \
   -H "Content-Type: application/json" \
-  -d '{"email": "mask@example.com", "purpose": "register"}' | sed -n 's/.*"code":"\\([0-9]\\{6\\}\\)".*/\\1/p')
+  -d '{"email": "mask@example.com", "purpose": "register"}'
 
 RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d "{\"email\": \"mask@example.com\", \"code\": \"${CODE}\", \"nickname\": \"MaskTest\"}")
+  -d "{\"email\": \"mask@example.com\", \"code\": \"从 docker logs 中复制的 6 位验证码\", \"nickname\": \"MaskTest\"}")
 
 # 提取 token
 TOKEN=$(echo $RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
@@ -343,13 +350,9 @@ curl http://localhost:8000/api/v1/members/me \
 **预期结果**：
 ```json
 {
-  "code": "SUCCESS",
-  "data": {
-    "id": 1,
-    "email": "mas***@example.com",  // 已脱敏
-    "nickname": "MaskTest",
-    ...
-  }
+  "id": 1,
+  "email": "mas***@example.com",
+  "nickname": "MaskTest"
 }
 ```
 
@@ -374,8 +377,8 @@ curl -X POST http://localhost:8000/api/v1/auth/send-code \
 **预期结果**：
 ```json
 {
-  "code": "VALIDATION_ERROR",
-  "message": "参数验证失败",
+  "code": "INVALID_INPUT",
+  "message": "输入参数无效",
   "trace_id": "uuid-format",
   "details": {...}
 }
@@ -420,20 +423,19 @@ curl http://localhost:8000/api/v1/admin/audit-logs \
 **预期结果**：
 ```json
 {
-  "code": "SUCCESS",
-  "data": {
-    "items": [
-      {
-        "id": 1,
-        "admin_user_id": 1,
-        "action": "admin.login",
-        "resource": "admin_users",
-        "trace_id": "uuid-format",
-        ...
-      }
-    ],
-    ...
-  }
+  "items": [
+    {
+      "id": 1,
+      "admin_user_id": 1,
+      "action": "list",
+      "resource": "audit_logs",
+      "trace_id": "uuid-format"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "page_size": 50,
+  "total_pages": 1
 }
 ```
 
